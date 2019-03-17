@@ -1,5 +1,5 @@
 # EdiFest
-**Hack The Burgh V 2019**
+**Hack The Burgh V 2019** <br />
 By Samuel MacLeod, Malavika Venkatesh, Ryan Schuller & Jenny Lin
 
 
