@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'api.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:html/dom.dart' as dom;
+import 'package:geo_location_finder/geo_location_finder.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(MyApp());
 const cardHeightFactor = 4 / 5;
@@ -54,7 +56,11 @@ class Event {
   String description;
   double lat;
   double long;
+  var price;
+  String name;
+  String website;
   double euclid_dist;
+  List<String> performance_dates;
   bool seen = false;
   bool liked = false;
   Event({this.title, this.description, this.image_src});
@@ -106,8 +112,36 @@ class _MyHomePageState extends State<MyHomePage>
 
   Future<List<Event>> api() async {
     var result = await Search();
-    double cur_lat = 55.9431985;
-    double cur_long = -3.2003548;
+    var currentLocation;
+    Map<dynamic, dynamic> locationMap;
+    double cur_lat;
+    double cur_long;
+
+    try {
+      locationMap = await GeoLocation.getLocation;
+      var status = locationMap["status"];
+      if ((status is String && status == "true") ||
+          (status is bool) && status) {
+        var lat = locationMap["latitude"];
+        var lng = locationMap["longitude"];
+
+        if (lat is String) {
+          cur_lat = double.parse(lat);
+          cur_long = double.parse(lng);
+        } else {
+          // lat and lng are not string, you need to check the data type and use accordingly.
+          // it might possible that else will be called in Android as we are getting double from it.
+          cur_lat = double.parse(lat);
+          cur_long = double.parse(lng);
+        }
+      } else {
+        result = locationMap["message"];
+      }
+    } catch (e) {
+      cur_lat = 55.9431985;
+      cur_long = -3.2003548;
+    }
+    debugPrint(cur_lat.toString() + ":" + cur_long.toString());
     List<Event> es = [];
 
     for (var i = 0; i < result.length; i++) {
@@ -117,6 +151,15 @@ class _MyHomePageState extends State<MyHomePage>
       event.long = currentevent['longitude'];
       event.description = currentevent['description'];
       event.title = currentevent['title'];
+      event.website = currentevent['website'];
+      event.name = currentevent['venue']['name'];
+      event.performance_dates = [];
+      event.price = currentevent['performances'][0]['price'];
+      var performances = currentevent['performances'];
+      for (var j = 0; j < performances.length; j++) {
+        var currentshow = currentevent['performances'][j];
+        event.performance_dates.add(currentshow['start']);
+      }
       event.euclid_dist =
           math.pow(event.lat - cur_lat, 2) + math.pow(event.long - cur_long, 2);
       if (currentevent['images'] != null) {
@@ -188,6 +231,10 @@ class _MyHomePageState extends State<MyHomePage>
                       title: events[0].title,
                       description: events[0].description,
                       width: width - 20,
+                      website: events[0].website,
+                      name: events[0].name,
+                      price: events[0].price,
+                      performance_times: events[0].performance_dates,
                       height: (height * (cardHeightFactor)) - 20)));
           adx = 0;
           ady = 0;
@@ -296,6 +343,7 @@ class _MyHomePageState extends State<MyHomePage>
                     image_src: non_viewed[2].image_src,
                     title: non_viewed[2].title,
                     description: non_viewed[2].description,
+                    price: non_viewed[2].price,
                     width: width - 100,
                     height: (height * (cardHeightFactor)) - 20)),
             Positioned(
@@ -304,6 +352,7 @@ class _MyHomePageState extends State<MyHomePage>
                 child: EventCard(
                     image_src: non_viewed[1].image_src,
                     title: non_viewed[1].title,
+                    price: non_viewed[2].price,
                     description: non_viewed[1].description,
                     width: width - 60,
                     height: (height * (cardHeightFactor)) - 20)),
@@ -317,6 +366,7 @@ class _MyHomePageState extends State<MyHomePage>
                         title: non_viewed[0].title,
                         description: non_viewed[0].description,
                         width: width - 20,
+                        price: non_viewed[2].price,
                         height: (height * (cardHeightFactor)) - 20))),
             buildButtons()
           ]
@@ -364,12 +414,18 @@ class _MyHomePageState extends State<MyHomePage>
 
 class EventCard extends StatelessWidget {
   EventCard(
-      {this.image_src, this.title, this.description, this.width, this.height});
+      {this.image_src,
+      this.title,
+      this.description,
+      this.price,
+      this.width,
+      this.height});
   String image_src;
   String title;
   String description;
   double width;
   double height;
+  var price;
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -392,7 +448,7 @@ class EventCard extends StatelessWidget {
                 ),
               )),
               Container(
-                  margin: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 4.0),
+                  margin: const EdgeInsets.fromLTRB(16.0, 16.0, 0.0, 4.0),
                   alignment: Alignment.centerLeft,
                   child: Text(
                     this.title,
@@ -400,7 +456,14 @@ class EventCard extends StatelessWidget {
                     textAlign: TextAlign.left,
                   )),
               Container(
-                  margin: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
+                  margin: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 0.0),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "£" + this.price.toString(),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  )),
+              Container(
+                  margin: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
                   alignment: Alignment.centerLeft,
                   child: Html(data: this.description))
             ],
@@ -409,36 +472,113 @@ class EventCard extends StatelessWidget {
   }
 }
 
+// class TimeTablingCard extends StatelessWidget {
+//   TimeTablingCard({this.times, this.name, this.width});
+//   List<String> times;
+//   String name;
+//   double width
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//         margin: const EdgeInsets.fromLTRB(10.0, 0, 10, 10),
+//         child: Card(
+//           shape: RoundedRectangleBorder(
+//             borderRadius: BorderRadius.circular(16.0),
+//           ),
+//           child: Column(
+//             mainAxisSize: MainAxisSize.min,
+//             children: <Widget>[
+//               Flexible(
+//                 child: Text(
+//                   this.name,
+//                   style: TextStyle(
+//                       fontSize: 21,
+//                       color: Colors.pink,
+//                       decoration: TextDecoration.none),
+//                   textAlign: TextAlign.center,
+//                 ),
+//               ),
+//             ],
+//           ),
+//         ));
+//   }
+// }
+
 class EventDetail extends StatelessWidget {
   EventDetail(
-      {this.image_src, this.title, this.description, this.width, this.height});
+      {this.image_src,
+      this.title,
+      this.description,
+      this.width,
+      this.height,
+      this.website,
+      this.name,
+      this.price,
+      this.performance_times});
   String image_src;
   String title;
+  String website;
   String description;
+  String name;
+  var price;
+  List<String> performance_times;
   double width;
   double height;
   @override
   Widget build(BuildContext context) {
     // TODO: implement build
     return PageView(
-      controller: PageController(initialPage: 1),
+      controller: PageController(initialPage: 0),
       children: <Widget>[
         Container(
-          color: Colors.pink,
-        ),
-        Container(
             color: Colors.cyan,
-            child: EventCard(
+            child: Column(children: [
+              Expanded(
+                  child: EventCard(
                 image_src: image_src,
                 title: title,
                 description: description,
+                price: price,
                 width: width,
-                height: height)),
-        Container(
-          color: Colors.deepPurple,
-        ),
+                height: height,
+              )),
+              // Expanded(
+              //     child: TimeTablingCard(times: performance_times, name: name)),
+              GestureDetector(
+                  onTap: () {
+                    _launchURL(website); //launch(eve)
+                  },
+                  child: Container(
+                      decoration: new BoxDecoration(
+                          color: Colors.deepPurple,
+                          borderRadius:
+                              new BorderRadius.all(Radius.circular(16))),
+                      margin: EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
+                      height: 60,
+                      width: width,
+                      child: Center(
+                        child: Text(
+                          "Book Now",
+                          style: TextStyle(
+                              fontSize: 21,
+                              color: Colors.white,
+                              background: Paint()..color = Colors.deepPurple,
+                              decoration: TextDecoration.none),
+                          textAlign: TextAlign.center,
+                        ),
+                      )))
+            ])),
       ],
     );
+  }
+}
+
+_launchURL(url) async {
+  if (await canLaunch(url)) {
+    await launch(url);
+  } else {
+    debugPrint('Could not launch $url');
   }
 }
 
@@ -471,6 +611,10 @@ class EventListItem extends StatelessWidget {
                       image_src: event.image_src,
                       title: event.title,
                       description: event.description,
+                      website: event.website,
+                      name: event.name,
+                      price: event.price,
+                      performance_times: event.performance_dates,
                     )));
       },
       child: Container(
