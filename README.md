@@ -11,7 +11,7 @@ We wanted a more efficient and faster way of finding nearby events. We were insp
 It is a mobile application that lets the user to go through events that will be happening in Edinburgh. The events are sorted from closest to furthest away depending on the device's location. The user can swipe left if they are not interested in the events. The user can swipe right if they are interested in the events, which will save the events. In addition, we also incorporated an extra button, so the user can click on to book the event immediately. This links to the booking page of the festival. Each event also has the price of the event displayed, to help them keep track of their financial spending.
 
 
-## How I built it
+## How we built it
 We used Flutter which is Google's mobile UI framework for mobile application. Our code is written in Dart for Android devices. 
 
 
