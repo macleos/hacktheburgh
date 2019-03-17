@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'api.dart';
+import 'package:flutter_html/flutter_html.dart';
+import 'package:html/dom.dart' as dom;
 
 void main() => runApp(MyApp());
+const cardHeightFactor = 4 / 5;
 
 class MyApp extends StatelessWidget {
   // This widget is the root of your application.
@@ -45,59 +49,91 @@ class MyHomePage extends StatefulWidget {
 }
 
 class Event {
-  final String image_src;
-  final String title;
-  final String description;
-
+  String image_src;
+  String title;
+  String description;
+  double lat;
+  double long;
+  double euclid_dist;
+  bool seen = false;
+  bool liked = false;
   Event({this.title, this.description, this.image_src});
+  void swiped(bool liked) {
+    this.seen = true;
+    this.liked = liked;
+  }
 }
 
 class _MyHomePageState extends State<MyHomePage>
     with SingleTickerProviderStateMixin {
   Animation<double> animation;
   AnimationController controller;
+  Offset currentDrag = Offset(0.0, 0.0);
   @override
   void initState() {
     super.initState();
-    controller =
-        AnimationController(duration: const Duration(seconds: 1), vsync: this);
-    animation = Tween<double>(begin: 0, end: 100).animate(controller)
-      ..addListener(() {
-        setState(() {
-          if (animation.value >= 20) {
-            adx = 0;
-            ady = 0;
-            dx = 0;
-            dy = 0;
+    controller = AnimationController(
+        duration: const Duration(milliseconds: 200), vsync: this);
+    animation = Tween<double>(begin: 0, end: 100).animate(controller);
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (currentDrag.dx < 0) {
+          events.firstWhere((e) => !e.seen).swiped(false);
+        } else {
+          events.firstWhere((e) => !e.seen).swiped(true);
+        }
 
-            theta = 0;
-            debugPrint(events.length.toString());
-            events.removeAt(0);
-            controller.stop();
-          } else {
-            if (dx < 0) {
-              adx = -animation.value * 30;
-            } else {
-              adx = animation.value * 30;
-            }
-            theta = ((adx + dx) / midX) * (math.pi / 10);
-          }
-        });
+        theta = 0;
+        ignore = false;
+        hide_buttons = false;
+        adx = 0;
+        ady = 0;
+        currentDrag = Offset(0, 0);
+      }
+    });
+    controller.addListener(() {
+      setState(() {
+        if (currentDrag.dx < 0) {
+          adx = -animation.value * 3;
+        } else {
+          adx = animation.value * 3;
+        }
+        theta = ((adx + currentDrag.dx) / midX) * (math.pi / 10);
       });
+    });
+    api();
   }
 
-  _MyHomePageState() {
-    this.events = List<Event>.generate(
-      20,
-      (i) => Event(
-          title: 'Event $i',
-          description: 'A description of Event $i',
-          image_src: 'https://source.unsplash.com/random'),
-    );
+  Future<List<Event>> api() async {
+    var result = await Search();
+    double cur_lat = 55.9431985;
+    double cur_long = -3.2003548;
+    List<Event> es = [];
+
+    for (var i = 0; i < result.length; i++) {
+      Event event = new Event();
+      var currentevent = result[i];
+      event.lat = currentevent['latitude'];
+      event.long = currentevent['longitude'];
+      event.description = currentevent['description'];
+      event.title = currentevent['title'];
+      event.euclid_dist =
+          math.pow(event.lat - cur_lat, 2) + math.pow(event.long - cur_long, 2);
+      if (currentevent['images'] != null) {
+        var imgkeys = currentevent['images'].values.toList();
+
+        event.image_src = "https:" + imgkeys[0]['versions']['original']['url'];
+      } else {
+        event.image_src = "https://source.unsplash.com/random";
+      }
+      es.add(event);
+    }
+    es.sort((a, b) => a.euclid_dist.compareTo(b.euclid_dist));
+    setState(() {
+      events = es;
+    });
   }
 
-  double dx = 0;
-  double dy = 0;
   double xoffset = 0;
   double yoffset = 0;
   double theta = 0;
@@ -106,8 +142,10 @@ class _MyHomePageState extends State<MyHomePage>
   double midX = 0;
   double adx = 0;
   double ady = 0;
+  bool ignore = false;
+  bool hide_buttons = false;
   double gradient = 0;
-  List<Event> events;
+  List<Event> events = [];
 
   Velocity finalVel;
   void startGesture(double x, double y) {
@@ -120,114 +158,174 @@ class _MyHomePageState extends State<MyHomePage>
       // called again, and so nothing would appear to happen.
       xoffset = x;
       yoffset = y;
+      if (height - yoffset < 100) {
+        ignore = true;
+      } else {
+        ignore = false;
+        hide_buttons = true;
+      }
     });
   }
 
   void stopGesture(Velocity velocity) {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
+    if (!ignore) {
+      setState(() {
+        hide_buttons = false;
+        // This call to setState tells the Flutter framework that something has
+        // changed in this State, which causes it to rerun the build method below
+        // so that the display can reflect the updated values. If we changed
+        // _counter without calling setState(), then the build method would not be
+        // called again, and so nothing would appear to happen.
 
-      finalVel = velocity;
-    });
-    controller.forward();
+        finalVel = velocity;
+        if (currentDrag.dy > 100 &&
+            math.sqrt(math.pow(currentDrag.dx, 2)) < 50) {
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => EventDetail(
+                      image_src: events[0].image_src,
+                      title: events[0].title,
+                      description: events[0].description,
+                      width: width - 20,
+                      height: (height * (cardHeightFactor)) - 20)));
+          adx = 0;
+          ady = 0;
+          currentDrag = Offset(0.0, 0.0);
+
+          theta = 0;
+        } else if (finalVel.pixelsPerSecond.distanceSquared > 50) {
+          controller.forward();
+        } else {
+          adx = 0;
+          ady = 0;
+          currentDrag = Offset(0.0, 0.0);
+          theta = 0;
+        }
+      });
+    }
   }
 
   void updateGesture(double x, double y) {
-    debugPrint(dx.toString());
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      dx = x - xoffset;
-      dy = y - yoffset;
+    if (!ignore) {
+      setState(() {
+        // This call to setState tells the Flutter framework that something has
+        // changed in this State, which causes it to rerun the build method below
+        // so that the display can reflect the updated values. If we changed
+        // _counter without calling setState(), then the build method would not be
+        // called again, and so nothing would appear to happen.
+        currentDrag = Offset(x - xoffset, y - yoffset);
 
-      theta = (dx / midX) * (math.pi / 10);
-    });
+        theta = (currentDrag.dx / midX) * (math.pi / 10);
+      });
+    }
+  }
+
+  Widget buildButtons() {
+    return !hide_buttons
+        ? Positioned(
+            bottom: 0,
+            width: width,
+            child: Container(
+                decoration: new BoxDecoration(color: Colors.transparent),
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          currentDrag = Offset(-100.0, 0.0);
+                          controller.reset();
+
+                          controller.forward();
+                        },
+                        child: Container(
+                            margin: const EdgeInsets.all(20.0),
+                            width: 60.0,
+                            height: 60.0,
+                            child: Icon(
+                              Icons.clear,
+                              size: 48,
+                              color: Colors.white,
+                            )),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      History(events: events)));
+                        },
+                        child: Container(
+                            margin: const EdgeInsets.all(20.0),
+                            width: 60.0,
+                            height: 60.0,
+                            child: Icon(
+                              Icons.star,
+                              size: 36,
+                              color: Colors.white,
+                            )),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          currentDrag = Offset(100.0, 0.0);
+                          controller.reset();
+                          controller.forward();
+                        },
+                        child: Container(
+                            margin: const EdgeInsets.all(20.0),
+                            width: 60.0,
+                            height: 60.0,
+                            child: Icon(Icons.check,
+                                size: 48, color: Colors.white)),
+                      ),
+                    ])))
+        : Container();
   }
 
   List<Widget> viewable_events() {
-    if (events.length >= 3) {
-      return [
-        Positioned(
-            top: 20,
-            left: 40,
-            child: EventCard(
-                image_src: events[2].image_src,
-                title: events[2].title,
-                description: events[2].description,
-                width: width - 100,
-                height: (height * (2 / 3)) - 20)),
-        Positioned(
-            top: 35,
-            left: 20,
-            child: EventCard(
-                image_src: events[1].image_src,
-                title: events[1].title,
-                description: events[1].description,
-                width: width - 60,
-                height: (height * (2 / 3)) - 20)),
-        Positioned(
-            top: 50 + dy.toDouble() + ady,
-            left: dx.toDouble() + adx,
-            child: Transform.rotate(
-                angle: theta,
+    var non_viewed = events.where((e) {
+      return e.seen == false;
+    }).toList();
+    return non_viewed.length >= 3
+        ? [
+            Positioned(
+                top: 20,
+                left: 40,
                 child: EventCard(
-                    image_src: events[0].image_src,
-                    title: events[0].title,
-                    description: events[0].description,
-                    width: width - 20,
-                    height: (height * (2 / 3)) - 20)))
-      ];
-    } else if (events.length == 2) {
-      return [
-        Positioned(
-            top: 35,
-            left: 20,
-            child: EventCard(
-                image_src: events[1].image_src,
-                title: events[1].title,
-                description: events[1].description,
-                width: width - 60,
-                height: (height * (2 / 3)) - 20)),
-        Positioned(
-            top: 50 + dy.toDouble() + ady,
-            left: dx.toDouble() + adx,
-            child: Transform.rotate(
-                angle: theta,
+                    image_src: non_viewed[2].image_src,
+                    title: non_viewed[2].title,
+                    description: non_viewed[2].description,
+                    width: width - 100,
+                    height: (height * (cardHeightFactor)) - 20)),
+            Positioned(
+                top: 35,
+                left: 20,
                 child: EventCard(
-                    image_src: events[0].image_src,
-                    title: events[0].title,
-                    description: events[0].description,
-                    width: width - 20,
-                    height: (height * (2 / 3)) - 20)))
-      ];
-    } else if (events.length == 1) {
-      return [
-        Positioned(
-            top: 50 + dy.toDouble() + ady,
-            left: dx.toDouble() + adx,
-            child: Transform.rotate(
-                angle: theta,
-                child: EventCard(
-                    image_src: events[0].image_src,
-                    title: events[0].title,
-                    description: events[0].description,
-                    width: width - 20,
-                    height: (height * (2 / 3)) - 20)))
-      ];
-    } else {
-      return [];
-    }
+                    image_src: non_viewed[1].image_src,
+                    title: non_viewed[1].title,
+                    description: non_viewed[1].description,
+                    width: width - 60,
+                    height: (height * (cardHeightFactor)) - 20)),
+            Positioned(
+                top: 50 + currentDrag.dy.toDouble() + ady,
+                left: currentDrag.dx.toDouble() + adx,
+                child: Transform.rotate(
+                    angle: theta,
+                    child: EventCard(
+                        image_src: non_viewed[0].image_src,
+                        title: non_viewed[0].title,
+                        description: non_viewed[0].description,
+                        width: width - 20,
+                        height: (height * (cardHeightFactor)) - 20))),
+            buildButtons()
+          ]
+        : [Container()];
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint(events.length.toString());
     width = MediaQuery.of(context).size.width;
     height = MediaQuery.of(context).size.height;
     midX = width / 2;
@@ -240,7 +338,7 @@ class _MyHomePageState extends State<MyHomePage>
     return new Column(children: [
       Flexible(
           child: new Container(
-              decoration: new BoxDecoration(color: Colors.white),
+              color: Colors.pink,
               child: GestureDetector(
                   onHorizontalDragStart: (details) {
                     startGesture(
@@ -260,44 +358,6 @@ class _MyHomePageState extends State<MyHomePage>
                   child: Stack(
                     children: viewable_events(),
                   )))),
-      Container(
-          decoration: new BoxDecoration(color: Colors.white),
-          child:
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              onTap: () {
-                dx = -1;
-                controller.reset();
-
-                controller.forward();
-              },
-              child: Container(
-                margin: const EdgeInsets.all(20.0),
-                width: 100.0,
-                height: 100.0,
-                decoration: new BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-            GestureDetector(
-              onTap: () {
-                dx = 1;
-                controller.reset();
-                controller.forward();
-              },
-              child: Container(
-                margin: const EdgeInsets.all(20.0),
-                width: 100.0,
-                height: 100.0,
-                decoration: new BoxDecoration(
-                  color: Colors.green,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ]))
     ]);
   }
 }
@@ -342,11 +402,109 @@ class EventCard extends StatelessWidget {
               Container(
                   margin: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
                   alignment: Alignment.centerLeft,
-                  child: Text(this.description,
-                      style: TextStyle(fontSize: 16),
-                      textAlign: TextAlign.left))
+                  child: Html(data: this.description))
             ],
           ),
         ));
+  }
+}
+
+class EventDetail extends StatelessWidget {
+  EventDetail(
+      {this.image_src, this.title, this.description, this.width, this.height});
+  String image_src;
+  String title;
+  String description;
+  double width;
+  double height;
+  @override
+  Widget build(BuildContext context) {
+    // TODO: implement build
+    return PageView(
+      controller: PageController(initialPage: 1),
+      children: <Widget>[
+        Container(
+          color: Colors.pink,
+        ),
+        Container(
+            color: Colors.cyan,
+            child: EventCard(
+                image_src: image_src,
+                title: title,
+                description: description,
+                width: width,
+                height: height)),
+        Container(
+          color: Colors.deepPurple,
+        ),
+      ],
+    );
+  }
+}
+
+class History extends StatelessWidget {
+  History({this.events});
+  List<Event> events;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        color: Colors.deepPurple,
+        child: ListView(
+            children: events
+                .where((e) => e.seen && e.liked)
+                .map((e) => EventListItem(event: e))
+                .toList()));
+  }
+}
+
+class EventListItem extends StatelessWidget {
+  EventListItem({this.event});
+  Event event;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => EventDetail(
+                      image_src: event.image_src,
+                      title: event.title,
+                      description: event.description,
+                    )));
+      },
+      child: Container(
+          margin: const EdgeInsets.fromLTRB(10.0, 5.0, 10.0, 5.0),
+          child: Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                    margin: const EdgeInsets.all(10.0),
+                    height: 64,
+                    width: 64,
+                    child: ClipRRect(
+                      borderRadius: new BorderRadius.circular(64.0),
+                      child: Image.network(
+                        this.event.image_src,
+                        fit: BoxFit.cover,
+                      ),
+                    )),
+                Flexible(
+                  child: Text(
+                    this.event.title,
+                    style: TextStyle(fontSize: 21),
+                    textAlign: TextAlign.left,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          )),
+    );
   }
 }
