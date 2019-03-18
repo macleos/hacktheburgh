@@ -7,7 +7,7 @@ import 'package:geo_location_finder/geo_location_finder.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(MyApp());
-const cardHeightFactor = 4 / 5;
+const cardHeightFactor = 3 / 4;
 
 class MyApp extends StatelessWidget {
   // This widget is the root of your application.
@@ -34,7 +34,21 @@ class MyApp extends StatelessWidget {
 
 class MyHomePage extends StatefulWidget {
   MyHomePage({Key key, this.title}) : super(key: key);
+  static _MyHomePageState of(BuildContext context) {
+    final _MyHomePageState navigator =
+        context.ancestorStateOfType(const TypeMatcher<_MyHomePageState>());
 
+    assert(() {
+      if (navigator == null) {
+        throw new FlutterError(
+            'MyStatefulWidgetState operation requested with a context that does '
+            'not include a MyStatefulWidget.');
+      }
+      return true;
+    }());
+
+    return navigator;
+  }
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
   // how it looks.
@@ -201,7 +215,7 @@ class _MyHomePageState extends State<MyHomePage>
       // called again, and so nothing would appear to happen.
       xoffset = x;
       yoffset = y;
-      if (height - yoffset < 100) {
+      if (height - yoffset < 100 || yoffset < 60) {
         ignore = true;
       } else {
         ignore = false;
@@ -227,14 +241,16 @@ class _MyHomePageState extends State<MyHomePage>
               context,
               MaterialPageRoute(
                   builder: (context) => EventDetail(
-                      image_src: events[0].image_src,
-                      title: events[0].title,
-                      description: events[0].description,
+                      image_src: events.firstWhere((e) => !e.seen).image_src,
+                      title: events.firstWhere((e) => !e.seen).title,
+                      description:
+                          events.firstWhere((e) => !e.seen).description,
                       width: width - 20,
-                      website: events[0].website,
-                      name: events[0].name,
-                      price: events[0].price,
-                      performance_times: events[0].performance_dates,
+                      website: events.firstWhere((e) => !e.seen).website,
+                      name: events.firstWhere((e) => !e.seen).name,
+                      price: events.firstWhere((e) => !e.seen).price,
+                      performance_times:
+                          events.firstWhere((e) => !e.seen).performance_dates,
                       height: (height * (cardHeightFactor)) - 20)));
           adx = 0;
           ady = 0;
@@ -300,8 +316,82 @@ class _MyHomePageState extends State<MyHomePage>
                           Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) =>
-                                      History(events: events)));
+                                  builder: (context) => Container(
+                                        color: Colors.deepPurple,
+                                        child: events
+                                                    .where((e) =>
+                                                        e.seen && e.liked)
+                                                    .length >
+                                                0
+                                            ? ListView(
+                                                children: events
+                                                    .where((e) =>
+                                                        e.seen && e.liked)
+                                                    .map((e) => Dismissible(
+                                                          background: Container(
+                                                              alignment: Alignment
+                                                                  .centerLeft,
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                          .all(
+                                                                      20.0),
+                                                              width: 60.0,
+                                                              height: 60.0,
+                                                              child: Icon(
+                                                                Icons.clear,
+                                                                size: 48,
+                                                                color: Colors
+                                                                    .white,
+                                                              )),
+                                                          secondaryBackground:
+                                                              Container(
+                                                                  alignment:
+                                                                      Alignment
+                                                                          .centerRight,
+                                                                  margin:
+                                                                      const EdgeInsets
+                                                                              .all(
+                                                                          20.0),
+                                                                  width: 60.0,
+                                                                  height: 60.0,
+                                                                  child: Icon(
+                                                                    Icons.clear,
+                                                                    size: 48,
+                                                                    color: Colors
+                                                                        .white,
+                                                                  )),
+                                                          // Each Dismissible must contain a Key. Keys allow Flutter to
+                                                          // uniquely identify Widgets.
+                                                          key: Key(e.hashCode
+                                                              .toString()),
+                                                          // We also need to provide a function that will tell our app
+                                                          // what to do after an item has been swiped away.
+                                                          onDismissed:
+                                                              (direction) {
+                                                            // Remove the item from our data source.
+
+                                                            e.liked = false;
+
+                                                            // Show a snackbar! This snackbar could also contain "Undo" actions.
+                                                          },
+                                                          child: EventListItem(
+                                                              event: e),
+                                                        ))
+                                                    .toList())
+                                            : Center(
+                                                child: Text(
+                                                "Like some events first!",
+                                                style: TextStyle(
+                                                    fontSize: 21,
+                                                    color: Colors.white,
+                                                    background: Paint()
+                                                      ..color =
+                                                          Colors.deepPurple,
+                                                    decoration:
+                                                        TextDecoration.none),
+                                                textAlign: TextAlign.center,
+                                              )),
+                                      )));
                         },
                         child: Container(
                             margin: const EdgeInsets.all(20.0),
@@ -334,43 +424,152 @@ class _MyHomePageState extends State<MyHomePage>
     var non_viewed = events.where((e) {
       return e.seen == false;
     }).toList();
-    return non_viewed.length >= 3
-        ? [
-            Positioned(
-                top: 20,
-                left: 40,
+    if (non_viewed.length >= 3) {
+      return [
+        Positioned(
+            top: 35,
+            left: 0,
+            width: width,
+            child: Text(
+              "£" +
+                  events
+                      .where((e) => e.liked)
+                      .fold(0.0, (a, b) => a + b.price)
+                      .toString(),
+              style: TextStyle(
+                  fontSize: 21,
+                  color: Colors.white,
+                  background: Paint()..color = Colors.pink,
+                  decoration: TextDecoration.none),
+              textAlign: TextAlign.center,
+            )),
+        Positioned(
+            top: 60,
+            left: 40,
+            child: EventCard(
+                image_src: non_viewed[2].image_src,
+                title: non_viewed[2].title,
+                description: non_viewed[2].description,
+                price: non_viewed[2].price,
+                width: width - 100,
+                height: (height * (cardHeightFactor)) - 20)),
+        Positioned(
+            top: 75,
+            left: 20,
+            child: EventCard(
+                image_src: non_viewed[1].image_src,
+                title: non_viewed[1].title,
+                price: non_viewed[1].price,
+                description: non_viewed[1].description,
+                width: width - 60,
+                height: (height * (cardHeightFactor)) - 20)),
+        Positioned(
+            top: 90 + currentDrag.dy.toDouble() + ady,
+            left: currentDrag.dx.toDouble() + adx,
+            child: Transform.rotate(
+                angle: theta,
                 child: EventCard(
-                    image_src: non_viewed[2].image_src,
-                    title: non_viewed[2].title,
-                    description: non_viewed[2].description,
-                    price: non_viewed[2].price,
-                    width: width - 100,
-                    height: (height * (cardHeightFactor)) - 20)),
-            Positioned(
-                top: 35,
-                left: 20,
+                    image_src: non_viewed[0].image_src,
+                    title: non_viewed[0].title,
+                    description: non_viewed[0].description,
+                    width: width - 20,
+                    price: non_viewed[0].price,
+                    height: (height * (cardHeightFactor)) - 20))),
+        buildButtons()
+      ];
+    } else if (non_viewed.length == 2) {
+      return [
+        Positioned(
+            top: 35,
+            left: 0,
+            width: width,
+            child: Text(
+              "£" +
+                  events
+                      .where((e) => e.liked)
+                      .fold(0.0, (a, b) => a + b.price)
+                      .toString(),
+              style: TextStyle(
+                  fontSize: 21,
+                  color: Colors.white,
+                  background: Paint()..color = Colors.pink,
+                  decoration: TextDecoration.none),
+              textAlign: TextAlign.center,
+            )),
+        Positioned(
+            top: 75,
+            left: 20,
+            child: EventCard(
+                image_src: non_viewed[1].image_src,
+                title: non_viewed[1].title,
+                price: non_viewed[1].price,
+                description: non_viewed[1].description,
+                width: width - 60,
+                height: (height * (cardHeightFactor)) - 20)),
+        Positioned(
+            top: 90 + currentDrag.dy.toDouble() + ady,
+            left: currentDrag.dx.toDouble() + adx,
+            child: Transform.rotate(
+                angle: theta,
                 child: EventCard(
-                    image_src: non_viewed[1].image_src,
-                    title: non_viewed[1].title,
-                    price: non_viewed[2].price,
-                    description: non_viewed[1].description,
-                    width: width - 60,
-                    height: (height * (cardHeightFactor)) - 20)),
-            Positioned(
-                top: 50 + currentDrag.dy.toDouble() + ady,
-                left: currentDrag.dx.toDouble() + adx,
-                child: Transform.rotate(
-                    angle: theta,
-                    child: EventCard(
-                        image_src: non_viewed[0].image_src,
-                        title: non_viewed[0].title,
-                        description: non_viewed[0].description,
-                        width: width - 20,
-                        price: non_viewed[2].price,
-                        height: (height * (cardHeightFactor)) - 20))),
-            buildButtons()
-          ]
-        : [Container()];
+                    image_src: non_viewed[0].image_src,
+                    title: non_viewed[0].title,
+                    description: non_viewed[0].description,
+                    width: width - 20,
+                    price: non_viewed[0].price,
+                    height: (height * (cardHeightFactor)) - 20))),
+        buildButtons()
+      ];
+    } else if (non_viewed.length == 1) {
+      return [
+        Positioned(
+            top: 35,
+            left: 0,
+            width: width,
+            child: Text(
+              "£" +
+                  events
+                      .where((e) => e.liked)
+                      .fold(0.0, (a, b) => a + b.price)
+                      .toString(),
+              style: TextStyle(
+                  fontSize: 21,
+                  color: Colors.white,
+                  background: Paint()..color = Colors.pink,
+                  decoration: TextDecoration.none),
+              textAlign: TextAlign.center,
+            )),
+        Positioned(
+            top: 90 + currentDrag.dy.toDouble() + ady,
+            left: currentDrag.dx.toDouble() + adx,
+            child: Transform.rotate(
+                angle: theta,
+                child: EventCard(
+                    image_src: non_viewed[0].image_src,
+                    title: non_viewed[0].title,
+                    description: non_viewed[0].description,
+                    width: width - 20,
+                    price: non_viewed[0].price,
+                    height: (height * (cardHeightFactor)) - 20))),
+        buildButtons()
+      ];
+    } else {
+      return [
+        Container(
+          child: Center(
+              child: Text(
+            "No more events nearby",
+            style: TextStyle(
+                fontSize: 21,
+                color: Colors.white,
+                background: Paint()..color = Colors.pink,
+                decoration: TextDecoration.none),
+            textAlign: TextAlign.center,
+          )),
+        ),
+        buildButtons()
+      ];
+    }
   }
 
   @override
@@ -583,8 +782,11 @@ _launchURL(url) async {
 }
 
 class History extends StatelessWidget {
-  History({this.events});
+  History({
+    this.events,
+  });
   List<Event> events;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -592,7 +794,31 @@ class History extends StatelessWidget {
         child: ListView(
             children: events
                 .where((e) => e.seen && e.liked)
-                .map((e) => EventListItem(event: e))
+                .map((e) => Dismissible(
+                      // Each Dismissible must contain a Key. Keys allow Flutter to
+                      // uniquely identify Widgets.
+                      key: Key(e.hashCode.toString()),
+                      // We also need to provide a function that will tell our app
+                      // what to do after an item has been swiped away.
+                      onDismissed: (direction) {
+                        // Remove the item from our data source.
+                        MyHomePage.of(context).events =
+                            MyHomePage.of(context).events.map((ev) {
+                          if (ev.hashCode == e.hashCode) {
+                            ev.liked = false;
+                            return ev;
+                          } else {
+                            return ev;
+                          }
+                        }).toList();
+                        e.liked = false;
+
+                        // Show a snackbar! This snackbar could also contain "Undo" actions.
+                        Scaffold.of(context).showSnackBar(
+                            SnackBar(content: Text(" dismissed")));
+                      },
+                      child: EventListItem(event: e),
+                    ))
                 .toList()));
   }
 }
@@ -625,7 +851,7 @@ class EventListItem extends StatelessWidget {
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: MainAxisSize.max,
               children: <Widget>[
                 Container(
                     margin: const EdgeInsets.all(10.0),
